@@ -1,0 +1,736 @@
+---
+title: "Group_7 Project"
+author: "Thejaswini Anupindi & Aishwarya Jonnalagadda"
+date: "4/17/2020"
+output: pdf_document
+---
+```{r}
+#Import Libraries
+#install.packages("gridExtra")
+library(gridExtra)
+library(magrittr)
+library(dplyr)
+library(caret)
+#install.packages("data.table")
+library(data.table)
+#install.packages("corrgram")
+library(corrgram)
+library(corrplot)
+library(MASS)
+library(Matrix)
+library(Metrics)
+#install.packages("lift")
+library(lift)
+library(rpart)
+library(glmnet)
+library(gvlma)
+library(randomForest)
+#install.packages("rpart.plot")
+library(rpart.plot)
+#install.packages("adabag")
+library(adabag)
+library(gmodels)
+#install.packages("ranger")
+library(ranger)
+library(xgboost)
+library(gains)
+library(forecast)
+library("FNN")
+library(rpart.plot)
+library(RColorBrewer)
+ library(rattle)
+library(neuralnet)
+
+library(psych)
+
+
+```
+
+
+```{r}
+#train <- read.csv("Train.csv")
+#valid <- read.csv("Valid.csv")
+#submission <- read.csv("Submission.csv")
+
+#valid <- cbind(valid, submission)
+#valid <- valid[,-c(12,13,14)]
+#str(train)
+
+#summary(train)
+#total_data <- rbind(train, valid)
+#write.csv(total_data, "total_bigmart_data.csv")
+
+#Data exploration - Finding the summary
+total_data <- read.csv("total_bigmart_data.csv")
+total_data <- total_data[,-1]
+Item_Outlet_Sales <- total_data[,12]
+
+#Divinding the data into training and Valid data
+set.seed(200)
+train_index <- sample(rownames(total_data), dim(total_data)[1]*0.60)
+train <- total_data[train_index, ]
+
+valid_index <- setdiff(rownames(total_data), train_index)
+valid <- total_data[valid_index, ]
+
+
+```
+
+
+```{r}
+#Histogram for predictor variable
+Hist_Item_Outlet_Sales <- ggplot(train) + 
+  geom_histogram(aes(train$Item_Outlet_Sales), 
+                 binwidth = 100, 
+                 fill = "#088DA5") +  
+  xlab("Item_Outlet_Sales")
+Hist_Item_Outlet_Sales
+# ggsave("Hist_Item_Outlet_Sales.jpeg", 
+#  plot = combination, 
+#  width = 8, height = 5, 
+#  units = "in", 
+#  dpi = 300)
+
+plot_Item_Weight <- ggplot(total_data) + 
+  geom_histogram(aes(Item_Weight), binwidth = 0.5, fill = "#005b96")
+
+plot_Item_Visibility <- ggplot(total_data) +
+  geom_histogram(aes(Item_Visibility), binwidth = 0.005, fill = "#6497b1")
+
+plot_Item_MRP <- ggplot(total_data) + 
+  geom_histogram(aes(Item_MRP), binwidth = 1, fill = "#428bca") 
+
+grid.arrange(plot_Item_Weight, plot_Item_Visibility, plot_Item_MRP, nrow = 1) 
+
+
+
+#df <- dplyr::summarize(group_by(total_data, Item_Fat_Content), Count = n())
+plot_Item_Fat_Content<- ggplot(total_data %>% 
+         group_by(Item_Fat_Content) %>% 
+         dplyr::summarise(Count = n())) +   
+  geom_bar(aes(Item_Fat_Content, Count), 
+           stat = "identity", fill = "#07aa7b")
+plot_Item_Fat_Content
+#Renaming column names as required
+total_data$Item_Fat_Content <- as.character(total_data$Item_Fat_Content )
+total_data$Item_Fat_Content[total_data$Item_Fat_Content == "LF"] = "Low Fat" 
+total_data$Item_Fat_Content[total_data$Item_Fat_Content == "low fat"] = "Low Fat" 
+total_data$Item_Fat_Content[total_data$Item_Fat_Content == "reg"] = "Regular" 
+
+plot_Item_Fat_Content_aftr <- ggplot(total_data %>% 
+       group_by(Item_Fat_Content) %>% 
+       dplyr::summarise(Count = n())) +   
+  geom_bar(aes(Item_Fat_Content, Count), stat = "identity", fill = "coral1")
+plot_Item_Fat_Content_aftr
+
+
+# plot for Item_Type 
+plot_Item_Type <- ggplot(total_data %>% 
+              group_by(Item_Type) %>% 
+              dplyr::summarise(Count = n())) +   
+  geom_bar(aes(reorder(Item_Type,-Count), Count),stat = "identity", fill = "#7c4eab") +  
+  xlab("") +  
+  geom_label(aes(Item_Type, Count, label = Count), vjust = 0.5) +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+  
+  ggtitle("Item_Type")
+plot_Item_Type
+
+# plot for Outlet_Identifier 
+plot_Outlet_Identifier <- ggplot(total_data %>% 
+               group_by(Outlet_Identifier) %>% 
+               dplyr::summarise(Count = n())) +   
+  geom_bar(aes(Outlet_Identifier, Count), stat = "identity", fill = "#f1aa7f") +  
+  geom_label(aes(Outlet_Identifier, Count, label = Count), vjust = 0.5) +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# plot for Outlet_Size 
+plot_Outlet_Size <- ggplot(total_data %>%
+                             group_by(Outlet_Size) %>% 
+                             dplyr::summarise(Count = n())) +   
+  geom_bar(aes(Outlet_Size, Count), stat = "identity", fill = "#e784c1") + 
+  geom_label(aes(Outlet_Size, Count, label = Count), vjust = 0.5) +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+grid.arrange(plot_Outlet_Identifier, plot_Outlet_Size, ncol = 1)
+
+# plot for Outlet_Establishment_Year 
+plot_Outlet_Establishment_Year <- ggplot(total_data %>% 
+              group_by(Outlet_Establishment_Year) %>% 
+              dplyr::summarise(Count = n())) +   
+  geom_bar(aes(factor(Outlet_Establishment_Year), Count), stat = "identity", fill = "#9c6ba9") +
+  geom_label(aes(factor(Outlet_Establishment_Year), Count, label = Count), vjust = 0.5) +
+  xlab("Outlet_Establishment_Year") +  
+  theme(axis.text.x = element_text(size = 8.5))
+
+# plot for Outlet_Type 
+plot_Outlet_Type <- ggplot(total_data %>% 
+              group_by(Outlet_Type) %>% 
+              dplyr::summarise(Count = n())) +  
+  geom_bar(aes(Outlet_Type, Count), stat = "identity", fill = "#066f6c") +  
+  geom_label(aes(factor(Outlet_Type), Count, label = Count), vjust = 0.5) +  
+  theme(axis.text.x = element_text(size = 8.5))
+
+# ploting both plots together 
+grid.arrange(plot_Outlet_Establishment_Year, plot_Outlet_Type, nrow = 2)
+
+#Scatter plot for Item_visibility
+scatter_plot_Item_Visibility <- ggplot(train, aes(Item_Visibility, Item_MRP)) +
+  geom_point(aes(color = Item_Type)) +
+  scale_x_continuous("Item Visibility", breaks = seq(0,0.35,0.05))+
+  scale_y_continuous("Item MRP", breaks = seq(0,270,by = 30))+ 
+                theme_bw() + labs(title="Scatterplot") + 
+  facet_wrap( ~ Item_Type)
+scatter_plot_Item_Visibility
+
+#Correlogram for the entire data
+corrgram(train, order=NULL,
+           panel=panel.shade, 
+         text.panel=panel.txt,
+           main="Correlogram")
+
+#Area plot for Item_Outlet_Sales
+area_plot1<-ggplot(train, aes(Item_Outlet_Sales)) + 
+  geom_area(stat = "bin", bins = 30, fill ="steelblue", alpha = 0.85) +
+         scale_x_continuous(breaks = seq(0,11000,1000))+
+         labs(title = "Item_Outlet_Sales Area Chart", x = "Item Outlet Sales", y = "Count")
+area_plot1
+
+#Boxplot for Outlet_Identifier and Item_Outlet_Sales
+box_plot <- ggplot(train, aes(Outlet_Identifier, Item_Outlet_Sales)) + 
+  geom_boxplot(fill = "#86dbd4")+
+  scale_y_continuous("Item Outlet Sales", breaks= seq(0,15000, by=500))+
+                labs(title = "Box Plot", x = "Outlet Identifier")
+box_plot
+
+#Heatmap or Raster plot for Outlet_Identifier and Item_Type
+raster_plot <- ggplot(train, aes(Outlet_Identifier, Item_Type))+
+               geom_raster(aes(fill = Item_MRP))+
+               labs(title ="Heat Map", x = "Outlet Identifier", y = "Item Type")+
+               scale_fill_continuous(name = "Item MRP")
+raster_plot
+
+# Item_Weight vs Item_Outlet_Sales 
+scatter_plot1 = ggplot(train) +     
+  geom_point(aes(Item_Weight, Item_Outlet_Sales), colour = "#ff748c", alpha = 0.3) +     
+  theme(axis.title = element_text(size = 8.5))
+
+# Item_Visibility vs Item_Outlet_Sales 
+scatter_plot2 <- ggplot(train) +       
+  geom_point(aes(Item_Visibility, Item_Outlet_Sales), colour = "#ff748c", alpha = 0.3) +      
+  theme(axis.title = element_text(size = 8.5))
+
+# Item_MRP vs Item_Outlet_Sales 
+scatter_plot3 <- ggplot(train) +       
+  geom_point(aes(Item_MRP, Item_Outlet_Sales), colour = "#ff748c", alpha = 0.3) +      
+  theme(axis.title = element_text(size = 8.5))
+
+second_row_2 <- grid.arrange(scatter_plot2, scatter_plot3, ncol = 2) 
+grid.arrange(scatter_plot1, second_row_2, nrow = 2)
+
+summary(total_data$Item_Weight)
+
+summary(total_data$Item_Weight)
+
+```
+
+
+```{r}
+#-----Data Preprocessing-----
+
+sum(is.na(total_data$Item_Weight))
+#Replacing the NA's of item_weight with the mean of item_weight
+missing_index = which(is.na(total_data$Item_Weight)) 
+for(i in missing_index){    
+  item = total_data$Item_Identifier[i]  
+  total_data$Item_Weight[i] = mean(total_data$Item_Weight[total_data$Item_Identifier == item],
+                                   na.rm = T) }
+
+sum(is.na(total_data$Item_Weight))
+
+#Replacing 0 value of item visibility with mean of it's values
+#Plot displaying presence of 0 values in item_visibility
+plot_with0 <- ggplot(total_data) + 
+  geom_histogram(aes(Item_Visibility), bins = 100, fill = "#ff8b6d")+
+  labs(title = "Item_Visibility with 0s")
+
+#Replacing with mean
+zero_index <- which(total_data$Item_Visibility == 0) 
+for(i in zero_index){    
+  item = total_data$Item_Identifier[i]  
+  total_data$Item_Visibility[i] = mean(total_data$Item_Visibility[total_data$Item_Identifier == item], 
+                                  na.rm = T)  }
+plot_without0 <- ggplot(total_data) + 
+  geom_histogram(aes(Item_Visibility), 
+                 bins = 100,fill = "#03919c")+labs(title = "Item_Visibility without 0s")
+
+grid.arrange(plot_with0, plot_without0, nrow = 2)
+
+#total_data the food_types
+perishable <- c("Breads", "Breakfast", "Dairy", "Fruits and Vegetables", "Meat", "Seafood")
+
+non_perishable <- c("Baking Goods", "Canned", "Frozen Foods", "Hard Drinks", 
+                    "Health and Hygiene", "Household", "Soft Drinks")
+
+#create a new column 'Item_Type_new' which contains categories such as "perishable", "non-perishable" and "not_sure"
+total_data$Item_Type_new <- ifelse(total_data$Item_Type %in% perishable, "perishable", 
+                            ifelse(total_data$Item_Type %in% non_perishable, "non_perishable", "not_sure"))
+
+#displaying the item_categories for each item which matches the item_identifier such as FD - Food,
+# DR - Drinks and NC - Non consumables
+table(total_data$Item_Type, substr(total_data$Item_Identifier, 1, 2))
+
+#Creating a new column for the item_category and assigning the item_identifiers for each item
+total_data$Item_category <-  substr(total_data$Item_Identifier, 1, 2)
+
+#changing the non-consumable into "Non-Edible" in item_fat_content
+total_data$Item_Fat_Content[total_data$Item_category == "NC"] = "Non-Edible"
+
+#Creating a new column "Outlet_Years" Number of years of operation for outlets
+#As the data belongs to 2013, the base value for calculating number of years is 2013
+total_data$Outlet_Years <-  (2013 - total_data$Outlet_Establishment_Year )
+total_data$Outlet_Establishment_Year <- as.factor(total_data$Outlet_Establishment_Year)
+
+#Calculating new column "price_per_unit_wt"
+total_data$price_per_unit_wt <- (total_data$Item_MRP/total_data$Item_Weight)
+
+#Dividing into bins for Item_MRP on the basis of Item_Outlet_Sales
+#Creating labels for each bin
+total_data$Item_MRP_label <-ifelse(total_data$Item_MRP < 69, "1st",                                    
+                            ifelse(total_data$Item_MRP >= 69 & total_data$Item_MRP < 136, "2nd",
+                            ifelse(total_data$Item_MRP >= 136 & total_data$Item_MRP < 203, "3rd", "4th")))
+
+```
+
+
+
+```{r}
+
+#-----Converting each category to a numerical variable-----
+total_data$Outlet_Size_num <- ifelse(total_data$Outlet_Size == "Small", 0,                                 
+                              ifelse(total_data$Outlet_Size == "Medium", 1, 2)) 
+
+total_data$Outlet_Location_Type_num <- ifelse(total_data$Outlet_Location_Type == "Tier 3", 0,   
+                                       ifelse(total_data$Outlet_Location_Type == "Tier 2", 1, 2))
+
+#Removing the unnecessary duplicate columns(Outlet_Size_num, Outlet_Location_Type)for which new numerical columns were created
+total_data <- total_data[,-c(9,10)]
+
+#--creating dummy variables for categorical variables--
+dummy <- dummyVars(~., data = total_data[,-c(1,8,5)], 
+                   fullRank = T)
+dummy_df <- data.table(predict(dummy, total_data[,-c(1,8,5)])) 
+total_data <- cbind(total_data[,"Item_Identifier"], dummy_df)
+colnames(total_data)[colnames(total_data) == 'V1'] <- 'Item_Identifier'
+
+#Removing the skewness by applying log functions
+total_data$Item_Visibility <- log(total_data$Item_Visibility + 1) 
+
+# log + 1 is applied to avoid division by zero 
+total_data$price_per_unit_wt <- log(total_data$price_per_unit_wt + 1)
+```
+
+ 
+ 
+```{r}
+#-----Standardizing the numeric predictors-----
+#For scaling and centering numerical variables
+
+# index of numeric features
+num_vars <- which(sapply(total_data, is.numeric))  
+num_vars_names <- names(num_vars) 
+total_data_standardized <- total_data[,setdiff(num_vars_names, "Item_Outlet_Sales"), with = F] 
+prep_num <- preProcess(total_data_standardized, method = c("center", "scale")) 
+total_data_std_norm <- predict(prep_num, total_data_standardized)
+
+# removing numeric independent variables 
+total_data_final <- cbind(total_data[,"Item_Outlet_Sales"], total_data_std_norm)
+
+
+#Data Partitioning into training and Validation sets
+train_processed <- total_data_final[1:nrow(train)] 
+valid_processed <- total_data_final[(nrow(train) + 1):nrow(total_data_final)] 
+
+#Finding the correlations between variables
+cor_train <- cor(train_processed)
+corrplot(cor_train, method = "pie", type = "lower", tl.cex = 0.7)
+
+```
+
+```{r}
+#-----PCA-----
+#a) Input the new data frame to fa.parallel() function to 
+# determine the number of components to extract
+fa.parallel(total_data_final, 
+            fa = "pc", 
+            n.iter = 100, 
+            show.legend = TRUE)
+
+#b) Input the new data frame to principal() function to
+#extract the components. If raw data is input, 
+#the correlation matrix is automatically calculated by principal() #function
+total_data_final_PC<- principal(total_data_final, 
+                   nfactors = 1,
+                   rotate = F,
+                   scores = F)
+total_data_final_PC
+#c) Rotate the components
+total_data_final_Rotated<- principal(total_data_final, 
+                        nfactors = 1, 
+                        rotate = "varimax")
+total_data_final_Rotated
+
+#d) Compute component scores
+total_data_final_Scores <- principal(total_data_final, 
+                        nfactors = 1, 
+                        scores = T)
+total_data_final_Scores
+
+#e) Graph an orthogonal solution using factor.plot()
+factor.plot(total_data_final_Rotated,
+            labels = rownames(total_data_final_Rotated$loadings))
+
+```
+
+
+```{r}
+#-----Model Fit - Linear Regeression-----
+linear_reg_mod <- lm(Item_Outlet_Sales ~ ., 
+                     data = train_processed)
+par(mfrow = c(2,2))
+plot(linear_reg_mod)
+par(mfrow = c(1,1))
+summary(linear_reg_mod)
+
+#Predict model using Training and Validation sets
+linear_train_pred <- predict(linear_reg_mod, train_processed) 
+linear_valid_pred <- predict(linear_reg_mod, valid_processed[,-1]) 
+
+#-----Linear Model Accuracy Check for Training Data-----
+accuracy(linear_train_pred, train_processed$Item_Outlet_Sales)
+cor(linear_train_pred, train_processed$Item_Outlet_Sales)
+
+#-----Linear Model Accuracy Check for Validation Data-----
+accuracy(linear_valid_pred, valid_processed$Item_Outlet_Sales)
+cor(linear_valid_pred, valid_processed$Item_Outlet_Sales)
+
+
+#----Lift charts----
+#bench is the dotted line in lift chart which represents the average
+bench <- c(c(1:5682)*mean(valid_processed$Item_Outlet_Sales))
+rlift <- data.frame(x = c(1:5682), 
+                    y = cumsum(valid_processed$Item_Outlet_Sales
+                               [order(linear_valid_pred, decreasing = TRUE)]), 
+                    bench = c(1:5682)*mean(valid_processed$Item_Outlet_Sales)) 
+#---Lift chart using "ggplot2"---
+ggplot(rlift, aes(x = x))+
+  geom_line(aes(y=y), color = "blue")+
+  geom_line(aes(y=bench), color="red", lty="dashed")+
+  labs(x="# of Cases", y="Cummulative Item_Outlet_Sales")+
+  ggtitle("Lift Chart")
+
+#-----Decile wise Lift Chart-----
+gain <- gains(valid_processed$Item_Outlet_Sales[!is.na(linear_valid_pred)],
+              linear_valid_pred[!is.na(linear_valid_pred)])
+# Decile-wise lift chart
+barplot(gain$mean.resp/mean(Item_Outlet_Sales), 
+        names.arg = gain$depth,
+        xlab = "Percentile", ylab = "Mean Response", 
+        main = "Decile-wise lift chart")
+
+#-----Correlation Plot-----
+par(mfrow = c(1,2))
+plot(linear_train_pred, train_processed$Item_Outlet_Sales, main = "Fitted values for Training Data"
+     , xlab = "Predicted_Values", ylab = "Item_Outlet_Sales")
+plot(linear_valid_pred, valid_processed$Item_Outlet_Sales, main = "Fitted values for Validation Data"
+     , xlab = "Predicted_Values", ylab = "Item_Outlet_Sales")
+par(mfrow = c(1,1))
+
+```
+
+```{r}
+
+#-----Lasso Regression-----
+set.seed(1235) 
+model_control <- trainControl(method="cv", number=5)
+Grid <- expand.grid(alpha = 1, lambda = seq(0.001,0.1,by = 0.0002)) 
+lasso_linear_reg_mod <- train(x = train_processed[,-1], 
+                             y = train_processed$Item_Outlet_Sales,                       
+                             method = 'glmnet', 
+                             trControl= model_control, tuneGrid = Grid)
+
+#Predict model using Training and Validation sets
+lasso_train_pred <- predict(lasso_linear_reg_mod, train_processed) 
+lasso_valid_pred <- predict(lasso_linear_reg_mod, valid_processed[,-1]) 
+
+#-----Lasso Regresssion Accuracy Check for Training data-----
+accuracy(lasso_train_pred, train_processed$Item_Outlet_Sales)
+cor(lasso_train_pred, train_processed$Item_Outlet_Sales)
+
+#-----Lasso Regression Accuracy Check for Validation Data-----
+accuracy(lasso_valid_pred, valid_processed$Item_Outlet_Sales)
+cor(lasso_valid_pred, valid_processed$Item_Outlet_Sales)
+
+#----Lift chart----
+#bench is the dotted line in lift chart which represents the average
+bench_lasso <- c(c(1:5682)*mean(valid_processed$Item_Outlet_Sales))
+rlift_lasso <- data.frame(x = c(1:5682), 
+                    y = cumsum(valid_processed$Item_Outlet_Sales
+                               [order(lasso_valid_pred, decreasing = TRUE)]), 
+                    bench = c(1:5682)*mean(valid_processed$Item_Outlet_Sales)) 
+
+#---Lift chart using "ggplot2"---
+p2_lasso <- ggplot(rlift_lasso, aes(x = x))+
+  geom_line(aes(y=y), color = "blue")+
+  geom_line(aes(y=bench_lasso), color="red", lty="dashed")+
+  labs(x="# of Cases", y="Cummulative Item_Outlet_Sales of Lasso Regression")+
+  ggtitle("Lift Chart")
+p2_lasso
+
+#-----Correlation Plot-----
+par(mfrow = c(1,2))
+plot(lasso_train_pred, train_processed$Item_Outlet_Sales, 
+     main = "Lasso Fitted values-Training Data", 
+     xlab = "Predicted_Values_Lasso", ylab = "Item_Outlet_Sales")
+plot(lasso_valid_pred, valid_processed$Item_Outlet_Sales,
+     main = "Lasso Fitted values-Validation Data", 
+     xlab = "Predicted_Values_Lasso", ylab = "Item_Outlet_Sales")
+par(mfrow = c(1,1))
+
+```
+
+
+```{r}
+#-----KNN-----
+
+#Predict model using Training and Validation sets
+knn_model_train <- knn.reg(train_processed[,-1],
+                     train_processed[,-1], train_processed$Item_Outlet_Sales, k = 15)
+
+knn_model_valid <- knn.reg(train_processed[,-1],
+                     valid_processed[,-1], train_processed$Item_Outlet_Sales, k = 15)
+
+#-----KNN Accuracy Check for Training data-----
+accuracy(knn_model_train$pred, train_processed$Item_Outlet_Sales)
+
+#-----KNN Accuracy Check for Validation data-----
+accuracy(knn_model_valid$pred, valid_processed$Item_Outlet_Sales)
+
+#---Lift chart with package "gains"---
+gain <- gains(valid_processed$Item_Outlet_Sales, knn_model_valid$pred)
+Item_Outlet_Sales <- valid_processed$Item_Outlet_Sales
+plot(c(0,gain$cume.pct.of.total*sum(Item_Outlet_Sales))~c(0,gain$cume.obs),
+     xlab = "# of cases", 
+     ylab = "Cumulative Item_Outlet_Sales", 
+     main = "Lift Chart using Gains", 
+     type ="l", 
+     col="blue")
+lines(c(0, sum(Item_Outlet_Sales))~c(0,5682), 
+      col="red", 
+      lty = 2)
+
+#-----Correlation Plot-----
+par(mfrow = c(1,2))
+plot(knn_model_train$pred, train_processed$Item_Outlet_Sales, 
+     main = "KNN Fitted values-Training Data", 
+     xlab = "Predicted_Values", ylab = "Item_Outlet_Sales")
+plot(knn_model_valid$pred, valid_processed$Item_Outlet_Sales,
+     main = "KNN Fitted values-Validation Data", 
+     xlab = "Predicted_Values", ylab = "Item_Outlet_Sales")
+par(mfrow = c(1,1))
+
+```
+
+
+```{r}
+#-----REGRESSION TREE-----
+set.seed(200)
+reg_tree_train <- rpart(Item_Outlet_Sales~.,
+                  method = "anova", 
+                  data = train_processed)
+print(reg_tree_train)
+rpart.plot(reg_tree_train, 
+           type = 3, digits = 3, 
+           fallen.leaves = TRUE)
+
+#Predict model using Training and Validation sets
+reg_tree_train_pred <- predict(reg_tree_train, train_processed)
+reg_tree_valid_pred <- predict(reg_tree_train, valid_processed[,-1])
+
+#-----Regression Tree Accuracy Check for Training data-----
+accuracy(reg_tree_train_pred, train_processed$Item_Outlet_Sales)
+#-----Regression Tree Accuracy Check for Training data-----
+accuracy(reg_tree_valid_pred, valid_processed$Item_Outlet_Sales)
+
+rsq.rpart(reg_tree_train)
+length(reg_tree_train$frame$var[reg_tree_train$frame$var =="<leaf>"]) 
+
+set.seed(123)
+#-----Pruned Tree-----
+pruned_tree_train <- prune(reg_tree_train, 
+                           cp = reg_tree_train$cptable[which.min(reg_tree_train$cptable[,"xerror"])
+                                                  ,"CP"])
+prp(pruned_tree_train, type = 1, extra = 1, split.font = 1, varlen = -10)
+length(pruned_tree_train$frame$var[pruned_tree_train$frame$var =="<leaf>"]) 
+fancyRpartPlot(pruned_tree_train, uniform=TRUE,main="Pruned Classification Tree")
+
+#---Lift chart with package "gains"---
+gain <- gains(valid_processed$Item_Outlet_Sales, reg_tree_valid_pred)
+Item_Outlet_Sales <- valid_processed$Item_Outlet_Sales
+plot(c(0,gain$cume.pct.of.total*sum(Item_Outlet_Sales))~c(0,gain$cume.obs),
+     xlab = "# of cases", 
+     ylab = "Cumulative Item_Outlet_Sales", 
+     main = "Lift Chart using Gains", 
+     type ="l", 
+     col="blue")
+lines(c(0, sum(Item_Outlet_Sales))~c(0,5682), 
+      col="red", 
+      lty = 2)
+# 
+# #-----Correlation Plot-----
+# par(mfrow = c(1,2))
+# plot(reg_tree_train_pred, train_processed$Item_Outlet_Sales, 
+#      main = "Regression Tree Fitted values-Training Data", 
+#      xlab = "Predicted_Values", ylab = "Item_Outlet_Sales")
+# plot(reg_tree_valid_pred, valid_processed$Item_Outlet_Sales,
+#      main = "Regression Tree Fitted values-Validation Data", 
+#      xlab = "Predicted_Values", ylab = "Item_Outlet_Sales")
+# par(mfrow = c(1,1))
+
+#-----RANDOM FORESTS-----
+set.seed(200)
+train_processed1 <- train_processed
+names(train_processed1)[3] <- "Item_Fat_ContentNon_Edible" 
+names(train_processed1)[16] <- "Outlet_Type_Supermarket_Type1" 
+names(train_processed1)[17] <- "Outlet_Type_Supermarket_Type2" 
+names(train_processed1)[18] <- "Outlet_Type_Supermarket_Type3" 
+
+valid_processed1 <- valid_processed
+names(valid_processed1)[3] <- "Item_Fat_ContentNon_Edible" 
+names(valid_processed1)[16] <- "Outlet_Type_Supermarket_Type1" 
+names(valid_processed1)[17] <- "Outlet_Type_Supermarket_Type2" 
+names(valid_processed1)[18] <- "Outlet_Type_Supermarket_Type3"
+
+
+random_forest_mod_train <- randomForest(Item_Outlet_Sales ~ ., 
+                   data = train_processed1, importance = TRUE, 
+                   ntree = 500)
+
+#Predict model using Training and Validation sets
+train_pred_forest <- predict(random_forest_mod_train,train_processed1)
+valid_pred_forest <- predict(random_forest_mod_train,valid_processed1[,-1])
+
+#-----Random Forest Accuracy Check for Training data-----
+accuracy(train_pred_forest, train_processed1$Item_Outlet_Sales)
+#-----Random Forest Accuracy Check for Validation data-----
+accuracy(valid_pred_forest, valid_processed1$Item_Outlet_Sales)
+
+print(random_forest_mod_train)
+which.min(random_forest_mod_train$mse)
+imp <- as.data.frame(sort(randomForest::importance(random_forest_mod_train)[,1],decreasing = TRUE),optional = T)
+names(imp) <- "% Inc MSE"
+imp
+varImpPlot(random_forest_mod_train)
+plot(random_forest_mod_train)
+
+#Gradient Boosting
+param_list = list(objective = "reg:linear",
+                  eta=0.01,gamma = 1,        
+                  max_depth=6,subsample=0.8,
+                  colsample_bytree=0.5) 
+dtrain = xgb.DMatrix(data = as.matrix(train_processed1[,-1]), 
+                     label = train_processed1$Item_Outlet_Sales) 
+dtest = xgb.DMatrix(data = as.matrix(valid_processed1[,-1]),
+                    label = valid_processed1$Item_Outlet_Sales)
+
+
+
+
+
+
+
+set.seed(112) 
+xgbcv = xgb.cv(params = param_list, data = dtrain,
+               nrounds = 1000, 
+               nfold = 5,
+               print_every_n = 40,
+               early_stopping_rounds = 30,maximize = F)
+
+#As the best Iteration occurs at nrounds = 408 out of 1000, we choose nrounds = 408 to train our model.
+xgb_model <- xgb.train(data = dtrain, params = param_list, nrounds = 408)
+xgb.pred <- predict(xgb_model, dtest, reshape=T)
+
+#-----XGB accuracy value-----
+accuracy(xgb.pred, valid_processed1$Item_Outlet_Sales)
+
+#Variable importance plot
+var_imp <- xgb.importance(feature_names = setdiff(names(train_processed1),
+                                                  c("Item_Outlet_Sales")),
+                          model = xgb_model)
+xgb.plot.importance(var_imp)
+
+
+```
+
+
+```{r}
+#-----NEURAL NETWORKS-----
+set.seed(210)
+# 
+# sigmoid = function(x) {
+#   1 / (1 + exp(-x))
+# }
+
+n <- names(train_processed1)
+f <- as.formula(paste("Item_Outlet_Sales ~", paste(n[!n %in% "Item_Outlet_Sales"], collapse = " + ")))
+neuralnet_model1 <- neuralnet(f, 
+                 data = train_processed1, 
+                 algorithm = "rprop+", 
+                 linear.output = T,
+                 hidden = c(5,3),
+                 learningrate = 100)
+
+neuralnet_train <- neuralnet::compute(neuralnet_model1, train_processed1)
+neuralnet_valid <- neuralnet::compute(neuralnet_model1, valid_processed1[,-1])
+
+
+rmse<-function(error){
+return(sqrt(mean(error^2)))}
+
+neuralnet_train_error <- neuralnet_train$net.result - train_processed1$Item_Outlet_Sales
+rmse(neuralnet_train_error)
+
+neuralnet_valid_error <- neuralnet_valid$net.result - valid_processed1$Item_Outlet_Sales
+rmse(neuralnet_valid_error)
+
+
+#----Lift chart----
+#bench is the dotted line in lift chart which represents the average
+bench_nn <- c(c(1:5682)*mean(valid_processed1$Item_Outlet_Sales))
+rlift_nn <- data.frame(x = c(1:5682), 
+                    y = cumsum(valid_processed1$Item_Outlet_Sales
+                               [order(neuralnet_valid$net.result, decreasing = TRUE)]), 
+                    bench = c(1:5682)*mean(valid_processed1$Item_Outlet_Sales)) 
+
+#---Lift chart using "ggplot2"---
+p2_nn <- ggplot(rlift_nn, aes(x = x))+
+  geom_line(aes(y=y), color = "blue")+
+  geom_line(aes(y=bench_nn), color="red", lty="dashed")+
+  labs(x="# of Cases", y="Cummulative Item_Outlet_Sales of Lasso Regression")+
+  scale_x_log10() +
+   scale_y_log10() +
+  ggtitle("Lift Chart")
+p2_nn
+
+
+#-----Correlation Plot-----
+par(mfrow = c(1,2))
+plot(neuralnet_train$net.result, train_processed1$Item_Outlet_Sales,
+     main = "NN Fitted values-Training Data",
+     xlab = "Predicted_Values", ylab = "Item_Outlet_Sales")
+plot(neuralnet_valid$net.result, valid_processed$Item_Outlet_Sales,
+     main = "NN Fitted values-Validation Data",
+     xlab = "Predicted_Values", ylab = "Item_Outlet_Sales")
+par(mfrow = c(1,1))
+
+
+```
+
